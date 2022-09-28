@@ -17,7 +17,9 @@ pub struct DvdPlugin;
 
 impl Plugin for DvdPlugin {
     fn build(&self, app: &mut App) {
-        app.add_startup_system(dvd_setup).add_system(bounce);
+        app.add_startup_system(dvd_setup)
+            .add_system(movement)
+            .add_system(bounce);
     }
 }
 
@@ -40,60 +42,49 @@ struct DvdBundle {
 
 fn dvd_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn_bundle(DvdBundle {
-        move_speed: MoveSpeed(350.),
+        move_speed: MoveSpeed(100.),
         speed_multiplier: SpeedMultiplier { x: 1., y: 1. },
         logo: SpriteBundle {
             texture: asset_server.load("logo.png"),
-            transform: Transform::from_scale(Vec3::new(0.2, 0.2, 1.)),
+            transform: Transform::from_scale(Vec3::new(0.1, 0.1, 1.)),
             ..default()
         },
     });
 }
 
+fn movement(time: Res<Time>, mut query: Query<(&MoveSpeed, &SpeedMultiplier, &mut Transform)>) {
+    for (move_speed, speed_multiplier, mut transform) in query.iter_mut() {
+        transform.translation.x += move_speed.0 * speed_multiplier.x * time.delta_seconds();
+        transform.translation.y += move_speed.0 * speed_multiplier.y * time.delta_seconds();
+    }
+}
+
 fn bounce(
-    time: Res<Time>,
-    mut query: Query<(
-        &MoveSpeed,
-        &Handle<Image>,
-        &mut SpeedMultiplier,
-        &mut Transform,
-    )>,
+    mut query: Query<(&Handle<Image>, &mut SpeedMultiplier, &Transform)>,
     windows: Res<Windows>,
     assets: Res<Assets<Image>>,
 ) {
-    for (move_speed, logo, mut speed_multiplier, mut transform) in query.iter_mut() {
+    for (logo, mut speed_multiplier, transform) in query.iter_mut() {
         if let Some(logo) = assets.get(logo) {
+            let sprite_width = logo.texture_descriptor.size.width as f32 * transform.scale.x;
+            let sprite_height = logo.texture_descriptor.size.height as f32 * transform.scale.y;
+
             for window in windows.iter() {
-                let width = window.requested_width();
-                let height = window.requested_height();
+                let window_width = window.requested_width();
+                let window_height = window.requested_height();
 
-                let right_edge = transform.translation.x
-                    + (logo.texture_descriptor.size.width as f32 / 2.) * transform.scale.x;
-
-                let left_edge = transform.translation.x
-                    - (logo.texture_descriptor.size.width as f32 / 2.) * transform.scale.x;
-
-                let top_edge = transform.translation.y
-                    + (logo.texture_descriptor.size.height as f32 / 2.) * transform.scale.y;
-
-                let bottom_edge = transform.translation.y
-                    - (logo.texture_descriptor.size.height as f32 / 2.) * transform.scale.y;
-
-                if right_edge > width / 2. {
+                if transform.translation.x + sprite_width / 2. > window_width / 2. {
                     speed_multiplier.x = -1.;
-                } else if left_edge < -width / 2. {
+                } else if transform.translation.x - sprite_width / 2. < -window_width / 2. {
                     speed_multiplier.x = 1.;
                 }
 
-                if top_edge > height / 2. {
+                if transform.translation.y + sprite_height / 2. > window_height / 2. {
                     speed_multiplier.y = -1.;
-                } else if bottom_edge < -height / 2. {
+                } else if transform.translation.y - sprite_height / 2. < -window_height / 2. {
                     speed_multiplier.y = 1.;
                 }
             }
-
-            transform.translation.x += move_speed.0 * speed_multiplier.x * time.delta_seconds();
-            transform.translation.y += move_speed.0 * speed_multiplier.y * time.delta_seconds();
         }
     }
 }
